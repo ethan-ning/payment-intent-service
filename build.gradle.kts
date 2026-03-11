@@ -3,10 +3,10 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     id("org.springframework.boot") version "3.2.3"
     id("io.spring.dependency-management") version "1.1.4"
-    id("nu.studer.jooq") version "8.2.3"
     id("org.flywaydb.flyway") version "10.7.1"
     kotlin("jvm") version "1.9.22"
     kotlin("plugin.spring") version "1.9.22"
+    kotlin("plugin.jpa") version "1.9.22"
 }
 
 group = "com.payments"
@@ -23,7 +23,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
-    implementation("org.springframework.boot:spring-boot-starter-jooq")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
     // Kotlin
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
@@ -32,10 +32,6 @@ dependencies {
 
     // Kafka
     implementation("org.springframework.kafka:spring-kafka")
-
-    // jOOQ
-    implementation("org.jooq:jooq")
-    jooqGenerator("org.postgresql:postgresql")
 
     // Database
     implementation("org.postgresql:postgresql")
@@ -70,40 +66,4 @@ tasks.withType<KotlinCompile> {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-}
-
-jooq {
-    version.set("3.18.9")
-    configurations {
-        create("main") {
-            jooqConfiguration.apply {
-                jdbc.apply {
-                    driver = "org.postgresql.Driver"
-                    url = System.getenv("DB_URL") ?: "jdbc:postgresql://localhost:5432/payment_intent_db"
-                    user = System.getenv("DB_USER") ?: "postgres"
-                    password = System.getenv("DB_PASSWORD") ?: "postgres"
-                }
-                generator.apply {
-                    name = "org.jooq.codegen.KotlinGenerator"
-                    database.apply {
-                        name = "org.jooq.meta.postgres.PostgresDatabase"
-                        inputSchema = "public"
-                        excludes = "flyway_schema_history"
-                    }
-                    generate.apply {
-                        isDeprecated = false
-                        isRecords = true
-                        isImmutablePojos = true
-                        isFluentSetters = true
-                        isKotlinNotNullPojoAttributes = true
-                        isKotlinNotNullRecordAttributes = true
-                    }
-                    target.apply {
-                        packageName = "com.payments.intentservice.infrastructure.persistence.jooq"
-                        directory = "src/main/kotlin"
-                    }
-                }
-            }
-        }
-    }
 }

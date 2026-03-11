@@ -1,33 +1,29 @@
 package com.payments.intentservice.infrastructure.persistence.outbox
 
 import com.payments.intentservice.infrastructure.messaging.KafkaEventPublisher
-import org.jooq.DSLContext
-import org.jooq.JSONB
-import org.jooq.impl.DSL.*
+import com.payments.intentservice.infrastructure.persistence.jpa.OutboxEventJpaRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDateTime
-import java.time.ZoneOffset
+import java.time.Instant
 
 /**
- * Outbox Relay: polls the outbox_events table and publishes PENDING events to Kafka.
+ * Outbox Relay: polls PENDING outbox_events and publishes them to Kafka.
  *
- * Uses SELECT FOR UPDATE SKIP LOCKED to safely run multiple instances in parallel
- * without double-publishing. This is the only place we couple DB + Kafka.
+ * Uses SELECT FOR UPDATE SKIP LOCKED (via native query in OutboxEventJpaRepository)
+ * to safely handle concurrent poller instances without double-publishing.
  *
- * In production, consider replacing this with Debezium CDC for lower latency.
+ * In production, consider replacing with Debezium CDC for sub-second latency.
  */
 @Component
 class OutboxPoller(
-    private val dsl: DSLContext,
+    private val outboxJpaRepository: OutboxEventJpaRepository,
     private val kafkaPublisher: KafkaEventPublisher
 ) {
     private val log = LoggerFactory.getLogger(OutboxPoller::class.java)
 
     companion object {
-        private val TABLE = table("outbox_events")
         private const val BATCH_SIZE = 100
         private const val MAX_RETRIES = 5
     }
@@ -35,51 +31,29 @@ class OutboxPoller(
     @Scheduled(fixedDelayString = "\${outbox.poll-interval-ms:1000}")
     @Transactional
     fun poll() {
-        val pending = dsl.select()
-            .from(TABLE)
-            .where(
-                field("status").eq("PENDING")
-                    .and(field("retry_count").lessThan(MAX_RETRIES))
-            )
-            .orderBy(field("created_at").asc())
-            .limit(BATCH_SIZE)
-            .forUpdate()
-            .skipLocked()
-            .fetch()
-
+        val pending = outboxJpaRepository.findPendingForUpdate(BATCH_SIZE, MAX_RETRIES)
         if (pending.isEmpty()) return
 
         log.debug("Processing ${pending.size} outbox events")
 
-        for (record in pending) {
-            val eventId = record.getValue("id")
-            val aggregateId = record.getValue("aggregate_id") as String
-            val eventType = record.getValue("event_type") as String
-            val payload = record.getValue("payload").toString()
-
+        for (event in pending) {
             try {
                 kafkaPublisher.publish(
-                    topic = "payment-intents.events",
-                    key = aggregateId,
-                    eventType = eventType,
-                    payload = payload
+                    topic = KafkaEventPublisher.PAYMENT_INTENTS_TOPIC,
+                    key = event.aggregateId,
+                    eventType = event.eventType,
+                    payload = event.payload
                 )
-
-                dsl.update(TABLE)
-                    .set(field("status"), "PUBLISHED")
-                    .set(field("published_at"), LocalDateTime.now(ZoneOffset.UTC))
-                    .where(field("id").eq(eventId))
-                    .execute()
+                event.status = "PUBLISHED"
+                event.publishedAt = Instant.now()
 
             } catch (e: Exception) {
-                log.error("Failed to publish outbox event $eventId: ${e.message}", e)
-
-                dsl.update(TABLE)
-                    .set(field("status"), "FAILED")
-                    .set(field("retry_count"), field("retry_count").add(1))
-                    .where(field("id").eq(eventId))
-                    .execute()
+                log.error("Failed to publish outbox event ${event.id}: ${e.message}", e)
+                event.status = "FAILED"
+                event.retryCount++
             }
+
+            outboxJpaRepository.save(event)
         }
     }
 }
