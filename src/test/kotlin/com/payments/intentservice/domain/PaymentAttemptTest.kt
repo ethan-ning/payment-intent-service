@@ -10,19 +10,28 @@ import java.time.Instant
 
 class PaymentAttemptTest {
 
-    private fun buildIntent(status: PaymentIntentStatus = PaymentIntentStatus.REQUIRES_CONFIRMATION) =
-        PaymentIntent(
+    private val visaCard = PaymentMethod.Card(
+        scheme = CardScheme.VISA, last4 = "4242",
+        expiryMonth = 12, expiryYear = 2027,
+        funding = CardFunding.CREDIT, fingerprint = null, issuerCountry = "SG"
+    )
+
+    private fun buildIntent(
+        status: PaymentIntentStatus = PaymentIntentStatus.REQUIRES_CONFIRMATION,
+        availableMethods: Set<PaymentMethodType> = emptySet()
+    ) = PaymentIntent(
             id = "pi_test",
             amount = Money(2000L, Currency.USD),
             status = status,
             captureMethod = CaptureMethod.AUTOMATIC,
             confirmationMethod = ConfirmationMethod.AUTOMATIC,
             customerId = null,
-            paymentMethodId = "pm_visa",
+            paymentMethodId = null,
             description = null,
             metadata = emptyMap(),
             idempotencyKey = null,
             clientSecret = "pi_test_secret_abc",
+            availablePaymentMethods = availableMethods,
             canceledAt = null,
             cancellationReason = null,
             latestPaymentAttemptId = null,
@@ -39,7 +48,15 @@ class PaymentAttemptTest {
         paymentIntentId = "pi_test",
         amount = Money(2000L, Currency.USD),
         status = status,
-        paymentMethodId = "pm_visa",
+        paymentMethod = PaymentMethod.Card(
+            scheme = CardScheme.VISA,
+            last4 = "4242",
+            expiryMonth = 12,
+            expiryYear = 2027,
+            funding = CardFunding.CREDIT,
+            fingerprint = null,
+            issuerCountry = "SG"
+        ),
         capturedAmount = null,
         processorReference = null,
         failureCode = null,
@@ -54,13 +71,14 @@ class PaymentAttemptTest {
     @Test
     fun `createAttempt succeeds when no prior attempts`() {
         val intent = buildIntent()
-        val (updatedIntent, attempt, event) = intent.createAttempt(
-            paymentMethodId = "pm_visa",
+        val (updatedIntent, attempt, _) = intent.createAttempt(
+            chosenPaymentMethod = visaCard,
             existingAttempts = emptyList()
         )
         assertTrue(attempt.id.startsWith("at_"))
         assertEquals(PaymentAttemptStatus.PENDING, attempt.status)
         assertEquals(attempt.id, updatedIntent.latestPaymentAttemptId)
+        assertEquals(CardScheme.VISA, (attempt.paymentMethod as PaymentMethod.Card).scheme)
     }
 
     @Test
@@ -69,7 +87,7 @@ class PaymentAttemptTest {
         val failedAttempt = buildAttempt(id = "at_001", status = PaymentAttemptStatus.FAILED)
 
         val (_, newAttempt, _) = intent.createAttempt(
-            paymentMethodId = "pm_visa",
+            chosenPaymentMethod = visaCard,
             existingAttempts = listOf(failedAttempt)
         )
 
@@ -84,10 +102,33 @@ class PaymentAttemptTest {
 
         assertThrows<PaymentAttemptViolationException> {
             intent.createAttempt(
-                paymentMethodId = "pm_visa",
+                chosenPaymentMethod = visaCard,
                 existingAttempts = listOf(succeededAttempt)
             )
         }
+    }
+
+    @Test
+    fun `createAttempt blocked if method not in availablePaymentMethods`() {
+        val intent = buildIntent(availableMethods = setOf(PaymentMethodType.WECHAT_PAY, PaymentMethodType.ALIPAY))
+
+        assertThrows<PaymentAttemptViolationException> {
+            intent.createAttempt(
+                chosenPaymentMethod = visaCard,  // CARD not in available list
+                existingAttempts = emptyList()
+            )
+        }
+    }
+
+    @Test
+    fun `createAttempt allowed when availablePaymentMethods is empty (no restriction)`() {
+        val intent = buildIntent(availableMethods = emptySet())  // empty = all allowed
+
+        val (_, attempt, _) = intent.createAttempt(
+            chosenPaymentMethod = visaCard,
+            existingAttempts = emptyList()
+        )
+        assertEquals(PaymentAttemptStatus.PENDING, attempt.status)
     }
 
     // ─── applyAttemptSucceeded ────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 package com.payments.intentservice.adapter.rest.v1
 
-import com.payments.intentservice.domain.model.PaymentAttempt
-import com.payments.intentservice.domain.model.PaymentIntent
+import com.payments.intentservice.domain.model.*
 
 /**
  * Stripe/Airwallex-compatible API response shape.
@@ -17,9 +16,9 @@ data class PaymentIntentResponse(
     val captureMethod: String,
     val confirmationMethod: String,
     val customerId: String?,
-    val paymentMethodId: String?,
     val description: String?,
     val metadata: Map<String, String>,
+    val availablePaymentMethods: List<String>,
     val latestPaymentAttempt: PaymentAttemptResponse?,
     val canceledAt: Long?,
     val cancellationReason: String?,
@@ -37,9 +36,9 @@ data class PaymentIntentResponse(
                 captureMethod = pi.captureMethod.name.lowercase(),
                 confirmationMethod = pi.confirmationMethod.name.lowercase(),
                 customerId = pi.customerId,
-                paymentMethodId = pi.paymentMethodId,
                 description = pi.description,
                 metadata = pi.metadata,
+                availablePaymentMethods = pi.availablePaymentMethods.map { it.name.lowercase() },
                 latestPaymentAttempt = latestAttempt?.let { PaymentAttemptResponse.from(it) },
                 canceledAt = pi.canceledAt?.epochSecond,
                 cancellationReason = pi.cancellationReason?.name?.lowercase(),
@@ -55,7 +54,9 @@ data class PaymentAttemptResponse(
     val amount: Long,
     val currency: String,
     val status: String,
-    val paymentMethodId: String?,
+    /** The payment method (scheme/type) used in this attempt */
+    val paymentMethodType: String?,
+    val paymentMethodDetails: PaymentMethodDetailsResponse?,
     val capturedAmount: Long?,
     val processorReference: String?,
     val failureCode: String?,
@@ -70,7 +71,8 @@ data class PaymentAttemptResponse(
             amount = a.amount.amount,
             currency = a.amount.currency.code.lowercase(),
             status = a.status.name.lowercase(),
-            paymentMethodId = a.paymentMethodId,
+            paymentMethodType = a.paymentMethod?.type?.name?.lowercase(),
+            paymentMethodDetails = a.paymentMethod?.let { PaymentMethodDetailsResponse.from(it) },
             capturedAmount = a.capturedAmount,
             processorReference = a.processorReference,
             failureCode = a.failureCode,
@@ -78,6 +80,64 @@ data class PaymentAttemptResponse(
             nextAction = a.nextAction?.let { NextActionResponse(it.type, it.redirectUrl) },
             created = a.createdAt.epochSecond
         )
+    }
+}
+
+/**
+ * Display-safe payment method details in the API response.
+ * Type-specific fields exposed only for their relevant type.
+ */
+data class PaymentMethodDetailsResponse(
+    val type: String,
+    // Card fields
+    val scheme: String? = null,
+    val last4: String? = null,
+    val expiryMonth: Int? = null,
+    val expiryYear: Int? = null,
+    val funding: String? = null,
+    val issuerCountry: String? = null,
+    // Wallet fields
+    val walletType: String? = null,
+    val email: String? = null,
+    // RTP fields
+    val provider: String? = null,
+    val transactionReference: String? = null,
+    // BNPL fields
+    val installments: Int? = null
+) {
+    companion object {
+        fun from(pm: PaymentMethod): PaymentMethodDetailsResponse = when (pm) {
+            is PaymentMethod.Card -> PaymentMethodDetailsResponse(
+                type = "card",
+                scheme = pm.scheme.name.lowercase(),
+                last4 = pm.last4,
+                expiryMonth = pm.expiryMonth,
+                expiryYear = pm.expiryYear,
+                funding = pm.funding.name.lowercase(),
+                issuerCountry = pm.issuerCountry
+            )
+            is PaymentMethod.Wallet -> PaymentMethodDetailsResponse(
+                type = pm.type.name.lowercase(),
+                walletType = pm.walletType.name.lowercase(),
+                email = pm.email,
+                last4 = pm.dynamicLast4
+            )
+            is PaymentMethod.RealTimePayment -> PaymentMethodDetailsResponse(
+                type = pm.type.name.lowercase(),
+                provider = pm.provider.name.lowercase(),
+                transactionReference = pm.transactionReference
+            )
+            is PaymentMethod.BuyNowPayLater -> PaymentMethodDetailsResponse(
+                type = pm.type.name.lowercase(),
+                provider = pm.provider.name.lowercase(),
+                installments = pm.installments
+            )
+            is PaymentMethod.BankTransfer -> PaymentMethodDetailsResponse(
+                type = "bank_transfer",
+                scheme = pm.scheme.name.lowercase(),
+                last4 = pm.last4
+            )
+        }
     }
 }
 

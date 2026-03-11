@@ -28,6 +28,13 @@ data class PaymentIntent(
     val metadata: Map<String, String>,
     val idempotencyKey: String?,
     val clientSecret: String,                    // {id}_secret_{random}
+    /**
+     * Payment method types the merchant has enabled for this intent.
+     * Drives the checkout UI — shopper picks one from this list.
+     * Derived from merchant configuration at intent creation time.
+     * Empty set = all methods enabled (no restriction).
+     */
+    val availablePaymentMethods: Set<PaymentMethodType>,
     val canceledAt: Instant?,
     val cancellationReason: CancellationReason?,
     val latestPaymentAttemptId: String?,         // denormalized for fast lookup
@@ -39,7 +46,7 @@ data class PaymentIntent(
      * Enforces: no new attempt if a succeeded attempt already exists.
      */
     fun createAttempt(
-        paymentMethodId: String?,
+        chosenPaymentMethod: PaymentMethod?,
         existingAttempts: List<PaymentAttempt>
     ): Triple<PaymentIntent, PaymentAttempt, PaymentAttemptEvent> {
         // Invariant: block new attempts if any prior attempt succeeded
@@ -51,6 +58,16 @@ data class PaymentIntent(
             )
         }
 
+        // Validate chosen method is available for this intent
+        if (chosenPaymentMethod != null && availablePaymentMethods.isNotEmpty()) {
+            if (chosenPaymentMethod.type !in availablePaymentMethods) {
+                throw PaymentAttemptViolationException(
+                    "Payment method [${chosenPaymentMethod.type}] is not available for intent [$id]. " +
+                    "Available: $availablePaymentMethods"
+                )
+            }
+        }
+
         val attemptId = generateAttemptId()
         val now = Instant.now()
         val attempt = PaymentAttempt(
@@ -58,7 +75,7 @@ data class PaymentIntent(
             paymentIntentId = id,
             amount = amount,
             status = PaymentAttemptStatus.PENDING,
-            paymentMethodId = paymentMethodId ?: this.paymentMethodId,
+            paymentMethod = chosenPaymentMethod,
             capturedAmount = null,
             processorReference = null,
             failureCode = null,

@@ -1,9 +1,6 @@
 package com.payments.intentservice.application.port.inbound
 
-import com.payments.intentservice.domain.model.CancellationReason
-import com.payments.intentservice.domain.model.CaptureMethod
-import com.payments.intentservice.domain.model.ConfirmationMethod
-import com.payments.intentservice.domain.model.PaymentIntent
+import com.payments.intentservice.domain.model.*
 
 // ─── Commands ────────────────────────────────────────────────────────────────
 
@@ -11,17 +8,27 @@ data class CreatePaymentIntentCommand(
     val amount: Long,
     val currency: String,
     val customerId: String? = null,
-    val paymentMethodId: String? = null,
     val description: String? = null,
     val metadata: Map<String, String> = emptyMap(),
     val captureMethod: CaptureMethod = CaptureMethod.AUTOMATIC,
     val confirmationMethod: ConfirmationMethod = ConfirmationMethod.AUTOMATIC,
+    /**
+     * Payment method types the merchant allows for this intent.
+     * Empty = all methods enabled (merchant has no restriction).
+     * Populated from merchant configuration at order time.
+     */
+    val availablePaymentMethods: Set<PaymentMethodType> = emptySet(),
     val idempotencyKey: String? = null,
     val confirm: Boolean = false
 )
 
 data class ConfirmPaymentIntentCommand(
-    val paymentMethodId: String? = null,
+    /**
+     * The payment method the shopper chose for this attempt.
+     * A VALUE OBJECT — not a reference to a saved instrument.
+     * e.g. Card(scheme=VISA, last4="4242", ...) or RealTimePayment(WECHAT_PAY)
+     */
+    val paymentMethod: PaymentMethod? = null,
     val returnUrl: String? = null
 )
 

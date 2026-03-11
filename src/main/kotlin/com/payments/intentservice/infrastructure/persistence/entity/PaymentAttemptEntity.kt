@@ -32,8 +32,17 @@ class PaymentAttemptEntity(
     @Column(name = "status", nullable = false, length = 30)
     var status: PaymentAttemptStatus,
 
-    @Column(name = "payment_method_id", length = 255)
-    val paymentMethodId: String? = null,
+    /**
+     * The payment method (scheme/type) used in this attempt.
+     * Stored as JSONB — a discriminated union keyed by "type".
+     * e.g. {"type":"CARD","scheme":"VISA","last4":"4242","expiryMonth":12,"expiryYear":2026,...}
+     * or   {"type":"WECHAT_PAY","transactionReference":"..."}
+     */
+    @Column(name = "payment_method", columnDefinition = "jsonb")
+    var paymentMethod: String? = null,
+
+    @Column(name = "payment_method_type", length = 50)
+    var paymentMethodType: String? = null,   // denormalized for indexed queries
 
     @Column(name = "captured_amount")
     var capturedAmount: Long? = null,

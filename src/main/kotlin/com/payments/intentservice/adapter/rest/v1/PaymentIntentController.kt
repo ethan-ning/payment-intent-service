@@ -51,11 +51,11 @@ class PaymentIntentController(
             amount = request.amount!!,
             currency = request.currency!!,
             customerId = request.customerId,
-            paymentMethodId = request.paymentMethodId,
             description = request.description,
             metadata = request.metadata,
             captureMethod = request.captureMethod,
             confirmationMethod = request.confirmationMethod,
+            availablePaymentMethods = request.availablePaymentMethods,
             idempotencyKey = idempotencyKey,
             confirm = request.confirm
         )
@@ -119,7 +119,7 @@ class PaymentIntentController(
         @RequestBody(required = false) request: ConfirmPaymentIntentRequest?
     ): ResponseEntity<PaymentIntentResponse> {
         val command = ConfirmPaymentIntentCommand(
-            paymentMethodId = request?.paymentMethodId,
+            paymentMethod = request?.paymentMethod?.toDomain(),
             returnUrl = request?.returnUrl
         )
         val paymentIntent = confirmUseCase.execute(id, command)

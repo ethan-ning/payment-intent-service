@@ -43,21 +43,19 @@ class CreatePaymentIntentUseCaseImpl(
         val paymentIntent = PaymentIntent(
             id = id,
             amount = money,
-            status = if (command.paymentMethodId != null) {
-                PaymentIntentStatus.REQUIRES_CONFIRMATION
-            } else {
-                PaymentIntentStatus.REQUIRES_PAYMENT_METHOD
-            },
+            status = PaymentIntentStatus.REQUIRES_PAYMENT_METHOD,
             captureMethod = command.captureMethod,
             confirmationMethod = command.confirmationMethod,
             customerId = command.customerId,
-            paymentMethodId = command.paymentMethodId,
+            paymentMethodId = null,
             description = command.description,
             metadata = command.metadata,
             idempotencyKey = command.idempotencyKey,
             clientSecret = generateClientSecret(id),
+            availablePaymentMethods = command.availablePaymentMethods,
             canceledAt = null,
             cancellationReason = null,
+            latestPaymentAttemptId = null,
             createdAt = now,
             updatedAt = now
         )

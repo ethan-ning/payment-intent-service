@@ -2,12 +2,10 @@ package com.payments.intentservice.infrastructure.persistence
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.payments.intentservice.application.port.outbound.PaymentAttemptRepository
-import com.payments.intentservice.domain.model.NextAction
-import com.payments.intentservice.domain.model.PaymentAttempt
-import com.payments.intentservice.domain.model.Currency
-import com.payments.intentservice.domain.model.Money
+import com.payments.intentservice.domain.model.*
 import com.payments.intentservice.infrastructure.persistence.entity.PaymentAttemptEntity
 import com.payments.intentservice.infrastructure.persistence.jpa.PaymentAttemptJpaRepository
+import com.payments.intentservice.infrastructure.persistence.mapper.PaymentMethodMapper
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -16,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional
 @Transactional
 class JpaPaymentAttemptRepository(
     private val jpaRepository: PaymentAttemptJpaRepository,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val paymentMethodMapper: PaymentMethodMapper
 ) : PaymentAttemptRepository {
 
     override fun save(attempt: PaymentAttempt): PaymentAttempt {
@@ -27,6 +26,8 @@ class JpaPaymentAttemptRepository(
     override fun update(attempt: PaymentAttempt): PaymentAttempt {
         val entity = jpaRepository.getReferenceById(attempt.id)
         entity.status = attempt.status
+        entity.paymentMethod = attempt.paymentMethod?.let { paymentMethodMapper.serialize(it) }
+        entity.paymentMethodType = attempt.paymentMethod?.type?.name
         entity.capturedAmount = attempt.capturedAmount
         entity.processorReference = attempt.processorReference
         entity.failureCode = attempt.failureCode
@@ -57,7 +58,7 @@ class JpaPaymentAttemptRepository(
         paymentIntentId = paymentIntentId,
         amount = Money(amount, Currency.of(currency)),
         status = status,
-        paymentMethodId = paymentMethodId,
+        paymentMethod = paymentMethod?.let { paymentMethodMapper.deserialize(it) },
         capturedAmount = capturedAmount,
         processorReference = processorReference,
         failureCode = failureCode,
@@ -73,7 +74,8 @@ class JpaPaymentAttemptRepository(
         amount = amount.amount,
         currency = amount.currency.code,
         status = status,
-        paymentMethodId = paymentMethodId,
+        paymentMethod = paymentMethod?.let { paymentMethodMapper.serialize(it) },
+        paymentMethodType = paymentMethod?.type?.name,
         capturedAmount = capturedAmount,
         processorReference = processorReference,
         failureCode = failureCode,

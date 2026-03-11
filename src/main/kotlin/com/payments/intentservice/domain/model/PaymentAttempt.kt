@@ -20,7 +20,12 @@ data class PaymentAttempt(
     val paymentIntentId: String,
     val amount: Money,
     val status: PaymentAttemptStatus,
-    val paymentMethodId: String?,
+    /**
+     * The payment method (scheme/type) the shopper used for this attempt.
+     * This is a VALUE OBJECT — not a reference to a saved instrument.
+     * Null until the shopper selects a method and the attempt is confirmed.
+     */
+    val paymentMethod: PaymentMethod?,
     val capturedAmount: Long?,               // set after capture (manual capture flow)
     val processorReference: String?,         // external processor transaction ID
     val failureCode: String?,
@@ -45,17 +50,18 @@ data class PaymentAttempt(
         return updated to PaymentAttemptEvent.ActionRequired(id, paymentIntentId, action.type)
     }
 
-    fun succeed(processorRef: String?): Pair<PaymentAttempt, PaymentAttemptEvent> {
+    fun succeed(processorRef: String?, resolvedMethod: PaymentMethod? = null): Pair<PaymentAttempt, PaymentAttemptEvent> {
         requireStatus(PaymentAttemptStatus.PENDING, PaymentAttemptStatus.PROCESSING, PaymentAttemptStatus.REQUIRES_ACTION)
         val updated = copy(
             status = PaymentAttemptStatus.SUCCEEDED,
             processorReference = processorRef,
+            paymentMethod = resolvedMethod ?: paymentMethod,
             updatedAt = Instant.now()
         )
         return updated to PaymentAttemptEvent.Succeeded(id, paymentIntentId, amount.amount, amount.currency.code)
     }
 
-    fun capture(captureAmount: Long, processorRef: String?): Pair<PaymentAttempt, PaymentAttemptEvent> {
+    fun capture(captureAmount: Long, processorRef: String?, resolvedMethod: PaymentMethod? = null): Pair<PaymentAttempt, PaymentAttemptEvent> {
         requireStatus(PaymentAttemptStatus.PENDING, PaymentAttemptStatus.PROCESSING)
         require(captureAmount <= amount.amount) {
             "Capture amount $captureAmount exceeds authorized amount ${amount.amount}"
@@ -64,6 +70,7 @@ data class PaymentAttempt(
             status = PaymentAttemptStatus.SUCCEEDED,
             capturedAmount = captureAmount,
             processorReference = processorRef,
+            paymentMethod = resolvedMethod ?: paymentMethod,
             updatedAt = Instant.now()
         )
         return updated to PaymentAttemptEvent.Succeeded(id, paymentIntentId, captureAmount, amount.currency.code)

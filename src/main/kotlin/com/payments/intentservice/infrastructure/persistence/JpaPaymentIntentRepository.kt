@@ -5,6 +5,7 @@ import com.payments.intentservice.application.port.inbound.ListPaymentIntentsQue
 import com.payments.intentservice.application.port.inbound.Page
 import com.payments.intentservice.application.port.outbound.PaymentIntentRepository
 import com.payments.intentservice.domain.model.*
+import com.payments.intentservice.domain.model.PaymentMethodType
 import com.payments.intentservice.infrastructure.persistence.entity.PaymentIntentEntity
 import com.payments.intentservice.infrastructure.persistence.jpa.PaymentIntentJpaRepository
 import org.springframework.data.domain.PageRequest
@@ -90,6 +91,10 @@ class JpaPaymentIntentRepository(
             metadata = metadataMap,
             idempotencyKey = idempotencyKey,
             clientSecret = clientSecret,
+            availablePaymentMethods = availablePaymentMethods
+                .takeIf { it.isNotEmpty() }
+                ?.let { parseAvailablePaymentMethods(it) }
+                ?: emptySet(),
             latestPaymentAttemptId = latestPaymentAttemptId,
             canceledAt = canceledAt,
             cancellationReason = cancellationReason,
@@ -97,6 +102,9 @@ class JpaPaymentIntentRepository(
             updatedAt = updatedAt
         )
     }
+
+    private fun parseAvailablePaymentMethods(csv: String): Set<PaymentMethodType> =
+        csv.split(",").filter { it.isNotBlank() }.map { PaymentMethodType.valueOf(it.trim()) }.toSet()
 
     private fun PaymentIntent.toEntity() = PaymentIntentEntity(
         id = id,
@@ -111,6 +119,7 @@ class JpaPaymentIntentRepository(
         metadata = objectMapper.writeValueAsString(metadata),
         idempotencyKey = idempotencyKey,
         clientSecret = clientSecret,
+        availablePaymentMethods = availablePaymentMethods.joinToString(",") { it.name },
         latestPaymentAttemptId = latestPaymentAttemptId,
         canceledAt = canceledAt,
         cancellationReason = cancellationReason,

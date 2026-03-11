@@ -29,9 +29,10 @@ class ConfirmPaymentIntentUseCaseImpl(
         val existing = paymentIntentRepository.findById(id)
             ?: throw PaymentIntentNotFoundException(id)
 
-        // Step 1: Attach payment method if provided
-        val withPaymentMethod = if (command.paymentMethodId != null && existing.paymentMethodId == null) {
-            val (updated, attachEvent) = existing.attachPaymentMethod(command.paymentMethodId)
+        // Step 1: Move intent to REQUIRES_CONFIRMATION if not already
+        val withPaymentMethod = if (existing.status == com.payments.intentservice.domain.model.PaymentIntentStatus.REQUIRES_PAYMENT_METHOD
+            && command.paymentMethod != null) {
+            val (updated, attachEvent) = existing.attachPaymentMethod(command.paymentMethod.type.name)
             outboxRepository.save(OutboxEvent(
                 aggregateId = id,
                 eventType = attachEvent.eventType,
@@ -43,10 +44,10 @@ class ConfirmPaymentIntentUseCaseImpl(
             existing
         }
 
-        // Step 2: Create a new PaymentAttempt
+        // Step 2: Create a new PaymentAttempt with the chosen payment method
         val existingAttempts = paymentAttemptRepository.findAllByPaymentIntentId(id)
         val (intentWithAttempt, newAttempt, attemptCreatedEvent) = withPaymentMethod.createAttempt(
-            paymentMethodId = command.paymentMethodId ?: withPaymentMethod.paymentMethodId,
+            chosenPaymentMethod = command.paymentMethod,
             existingAttempts = existingAttempts
         )
         val savedAttempt = paymentAttemptRepository.save(newAttempt)

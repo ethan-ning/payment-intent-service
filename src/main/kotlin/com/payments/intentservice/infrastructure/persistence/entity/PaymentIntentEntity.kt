@@ -61,6 +61,14 @@ class PaymentIntentEntity(
     @Column(name = "client_secret", nullable = false, length = 500)
     val clientSecret: String,
 
+    /**
+     * Payment method types the merchant has enabled for this intent.
+     * Stored as a comma-separated string e.g. "CARD,WECHAT_PAY,ALIPAY"
+     * Empty string = all methods available.
+     */
+    @Column(name = "available_payment_methods", length = 500)
+    val availablePaymentMethods: String = "",
+
     @Column(name = "latest_payment_attempt_id", length = 255)
     var latestPaymentAttemptId: String? = null,
 

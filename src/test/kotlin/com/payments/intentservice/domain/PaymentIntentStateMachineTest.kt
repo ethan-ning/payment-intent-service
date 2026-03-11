@@ -23,6 +23,7 @@ class PaymentIntentStateMachineTest {
             metadata = emptyMap(),
             idempotencyKey = null,
             clientSecret = "pi_test_123_secret_abc",
+            availablePaymentMethods = emptySet(),
             canceledAt = null,
             cancellationReason = null,
             latestPaymentAttemptId = null,
