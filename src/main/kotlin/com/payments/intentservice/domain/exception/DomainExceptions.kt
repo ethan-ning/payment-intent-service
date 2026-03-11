@@ -31,3 +31,9 @@ class PaymentIntentAlreadyTerminalException(id: String, status: String) :
 
 class InsufficientCaptureAmountException(requested: Long, authorized: Long) :
     DomainException("Capture amount $requested exceeds authorized amount $authorized")
+
+class PaymentAttemptViolationException(message: String) :
+    DomainException(message)
+
+class PaymentAttemptNotFoundException(id: String) :
+    DomainException("PaymentAttempt not found: $id")

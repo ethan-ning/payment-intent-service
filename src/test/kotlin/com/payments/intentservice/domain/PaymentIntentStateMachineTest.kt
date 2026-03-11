@@ -25,6 +25,7 @@ class PaymentIntentStateMachineTest {
             clientSecret = "pi_test_123_secret_abc",
             canceledAt = null,
             cancellationReason = null,
+            latestPaymentAttemptId = null,
             createdAt = Instant.now(),
             updatedAt = Instant.now()
         )

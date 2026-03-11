@@ -3,6 +3,7 @@ package com.payments.intentservice.adapter.rest.v1
 import com.payments.intentservice.application.port.inbound.*
 import com.payments.intentservice.application.port.outbound.IdempotencyRecord
 import com.payments.intentservice.application.port.outbound.IdempotencyStore
+import com.payments.intentservice.application.port.outbound.PaymentAttemptRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -27,6 +28,7 @@ class PaymentIntentController(
     private val cancelUseCase: CancelPaymentIntentUseCase,
     private val getUseCase: GetPaymentIntentUseCase,
     private val listUseCase: ListPaymentIntentsUseCase,
+    private val attemptRepository: PaymentAttemptRepository,
     private val idempotencyStore: IdempotencyStore,
     private val objectMapper: ObjectMapper
 ) {
@@ -59,7 +61,7 @@ class PaymentIntentController(
         )
 
         val paymentIntent = createUseCase.execute(command)
-        val response = PaymentIntentResponse.from(paymentIntent)
+        val response = PaymentIntentResponse.from(paymentIntent, null)
 
         // Cache the response
         if (idempotencyKey != null) {
@@ -81,7 +83,8 @@ class PaymentIntentController(
     @GetMapping("/{id}")
     fun get(@PathVariable id: String): ResponseEntity<PaymentIntentResponse> {
         val paymentIntent = getUseCase.execute(id)
-        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent))
+        val latestAttempt = attemptRepository.findLatestByPaymentIntentId(id)
+        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent, latestAttempt))
     }
 
     @GetMapping
@@ -100,7 +103,9 @@ class PaymentIntentController(
         val page = listUseCase.execute(query)
         return ResponseEntity.ok(
             PaymentIntentListResponse(
-                data = page.data.map { PaymentIntentResponse.from(it) },
+                data = page.data.map { pi ->
+                    PaymentIntentResponse.from(pi, attemptRepository.findLatestByPaymentIntentId(pi.id))
+                },
                 hasMore = page.hasMore,
                 totalCount = page.totalCount
             )
@@ -118,7 +123,8 @@ class PaymentIntentController(
             returnUrl = request?.returnUrl
         )
         val paymentIntent = confirmUseCase.execute(id, command)
-        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent))
+        val latestAttempt = attemptRepository.findLatestByPaymentIntentId(id)
+        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent, latestAttempt))
     }
 
     @PostMapping("/{id}/capture")
@@ -128,7 +134,8 @@ class PaymentIntentController(
     ): ResponseEntity<PaymentIntentResponse> {
         val command = CapturePaymentIntentCommand(amountToCapture = request?.amountToCapture)
         val paymentIntent = captureUseCase.execute(id, command)
-        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent))
+        val latestAttempt = attemptRepository.findLatestByPaymentIntentId(id)
+        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent, latestAttempt))
     }
 
     @PostMapping("/{id}/cancel")
@@ -138,6 +145,7 @@ class PaymentIntentController(
     ): ResponseEntity<PaymentIntentResponse> {
         val command = CancelPaymentIntentCommand(cancellationReason = request?.cancellationReason)
         val paymentIntent = cancelUseCase.execute(id, command)
-        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent))
+        val latestAttempt = attemptRepository.findLatestByPaymentIntentId(id)
+        return ResponseEntity.ok(PaymentIntentResponse.from(paymentIntent, latestAttempt))
     }
 }

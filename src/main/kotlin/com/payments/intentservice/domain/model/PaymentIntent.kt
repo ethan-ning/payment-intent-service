@@ -1,13 +1,19 @@
 package com.payments.intentservice.domain.model
 
+import com.aventrix.jnanoid.jnanoid.NanoIdUtils
+import com.payments.intentservice.domain.event.PaymentAttemptEvent
 import com.payments.intentservice.domain.event.PaymentIntentEvent
 import com.payments.intentservice.domain.exception.InvalidStateTransitionException
+import com.payments.intentservice.domain.exception.PaymentAttemptViolationException
 import java.time.Instant
 
 /**
  * PaymentIntent — the core aggregate of this service.
  *
- * Encapsulates all business rules around payment lifecycle.
+ * Owns the PaymentAttempt lifecycle and enforces invariants:
+ *   - No new attempt may be created once one has SUCCEEDED
+ *   - The succeeded attempt must be the last (latest) attempt
+ *
  * No framework annotations. Pure Kotlin.
  */
 data class PaymentIntent(
@@ -24,9 +30,95 @@ data class PaymentIntent(
     val clientSecret: String,                    // {id}_secret_{random}
     val canceledAt: Instant?,
     val cancellationReason: CancellationReason?,
+    val latestPaymentAttemptId: String?,         // denormalized for fast lookup
     val createdAt: Instant,
     val updatedAt: Instant
 ) {
+    /**
+     * Create a new PaymentAttempt for this intent.
+     * Enforces: no new attempt if a succeeded attempt already exists.
+     */
+    fun createAttempt(
+        paymentMethodId: String?,
+        existingAttempts: List<PaymentAttempt>
+    ): Triple<PaymentIntent, PaymentAttempt, PaymentAttemptEvent> {
+        // Invariant: block new attempts if any prior attempt succeeded
+        val succeededAttempt = existingAttempts.find { it.status == PaymentAttemptStatus.SUCCEEDED }
+        if (succeededAttempt != null) {
+            throw PaymentAttemptViolationException(
+                "Cannot create a new attempt for PaymentIntent[$id]: " +
+                "attempt [${succeededAttempt.id}] already succeeded"
+            )
+        }
+
+        val attemptId = generateAttemptId()
+        val now = Instant.now()
+        val attempt = PaymentAttempt(
+            id = attemptId,
+            paymentIntentId = id,
+            amount = amount,
+            status = PaymentAttemptStatus.PENDING,
+            paymentMethodId = paymentMethodId ?: this.paymentMethodId,
+            capturedAmount = null,
+            processorReference = null,
+            failureCode = null,
+            failureMessage = null,
+            nextAction = null,
+            createdAt = now,
+            updatedAt = now
+        )
+
+        val updatedIntent = copy(
+            latestPaymentAttemptId = attemptId,
+            updatedAt = now
+        )
+
+        val event = PaymentAttemptEvent.Created(
+            attemptId = attemptId,
+            paymentIntentId = id,
+            amount = amount.amount,
+            currency = amount.currency.code
+        )
+
+        return Triple(updatedIntent, attempt, event)
+    }
+
+    /**
+     * Apply the result of a succeeded attempt back onto the intent.
+     * Enforces: the succeeded attempt must be the latest attempt.
+     */
+    fun applyAttemptSucceeded(
+        attempt: PaymentAttempt,
+        existingAttempts: List<PaymentAttempt>
+    ): Pair<PaymentIntent, PaymentIntentEvent> {
+        // Invariant: succeeded attempt must be the latest one
+        val latestAttempt = existingAttempts.maxByOrNull { it.createdAt }
+        if (latestAttempt?.id != attempt.id) {
+            throw PaymentAttemptViolationException(
+                "Attempt [${attempt.id}] is not the latest attempt for PaymentIntent[$id]. " +
+                "Latest is [${latestAttempt?.id}]."
+            )
+        }
+        val updated = copy(status = PaymentIntentStatus.SUCCEEDED, updatedAt = Instant.now())
+        return updated to PaymentIntentEvent.Succeeded(id, amount.amount, amount.currency.code)
+    }
+
+    /**
+     * Apply the result of a failed attempt back onto the intent.
+     * Intent stays in REQUIRES_PAYMENT_METHOD to allow retry.
+     */
+    fun applyAttemptFailed(): Pair<PaymentIntent, PaymentIntentEvent> {
+        val updated = copy(
+            status = PaymentIntentStatus.REQUIRES_PAYMENT_METHOD,
+            updatedAt = Instant.now()
+        )
+        return updated to PaymentIntentEvent.AttemptFailed(id)
+    }
+
+    private fun generateAttemptId(): String {
+        val alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray()
+        return "at_${NanoIdUtils.randomNanoId(NanoIdUtils.DEFAULT_NUMBER_GENERATOR, alphabet, 24)}"
+    }
     /**
      * Attach a payment method. Transitions to REQUIRES_CONFIRMATION.
      */

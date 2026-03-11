@@ -51,6 +51,16 @@ interface DomainEventPublisher {
     fun publish(event: PaymentIntentEvent)
 }
 
+// ─── Payment Attempt Repository Port ─────────────────────────────────────────
+
+interface PaymentAttemptRepository {
+    fun save(attempt: com.payments.intentservice.domain.model.PaymentAttempt): com.payments.intentservice.domain.model.PaymentAttempt
+    fun update(attempt: com.payments.intentservice.domain.model.PaymentAttempt): com.payments.intentservice.domain.model.PaymentAttempt
+    fun findById(id: String): com.payments.intentservice.domain.model.PaymentAttempt?
+    fun findLatestByPaymentIntentId(paymentIntentId: String): com.payments.intentservice.domain.model.PaymentAttempt?
+    fun findAllByPaymentIntentId(paymentIntentId: String): List<com.payments.intentservice.domain.model.PaymentAttempt>
+}
+
 // ─── Payment Processor Port ──────────────────────────────────────────────────
 
 data class ProcessorResult(

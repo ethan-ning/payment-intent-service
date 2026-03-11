@@ -35,6 +35,7 @@ class JpaPaymentIntentRepository(
         entity.status = paymentIntent.status
         entity.paymentMethodId = paymentIntent.paymentMethodId
         entity.metadata = objectMapper.writeValueAsString(paymentIntent.metadata)
+        entity.latestPaymentAttemptId = paymentIntent.latestPaymentAttemptId
         entity.canceledAt = paymentIntent.canceledAt
         entity.cancellationReason = paymentIntent.cancellationReason
         entity.updatedAt = paymentIntent.updatedAt
@@ -89,6 +90,7 @@ class JpaPaymentIntentRepository(
             metadata = metadataMap,
             idempotencyKey = idempotencyKey,
             clientSecret = clientSecret,
+            latestPaymentAttemptId = latestPaymentAttemptId,
             canceledAt = canceledAt,
             cancellationReason = cancellationReason,
             createdAt = createdAt,
@@ -109,6 +111,7 @@ class JpaPaymentIntentRepository(
         metadata = objectMapper.writeValueAsString(metadata),
         idempotencyKey = idempotencyKey,
         clientSecret = clientSecret,
+        latestPaymentAttemptId = latestPaymentAttemptId,
         canceledAt = canceledAt,
         cancellationReason = cancellationReason,
         createdAt = createdAt,

@@ -61,6 +61,9 @@ class PaymentIntentEntity(
     @Column(name = "client_secret", nullable = false, length = 500)
     val clientSecret: String,
 
+    @Column(name = "latest_payment_attempt_id", length = 255)
+    var latestPaymentAttemptId: String? = null,
+
     @Column(name = "canceled_at")
     var canceledAt: Instant? = null,
 

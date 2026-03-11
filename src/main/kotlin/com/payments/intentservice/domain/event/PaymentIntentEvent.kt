@@ -67,6 +67,13 @@ sealed class PaymentIntentEvent {
         override val occurredAt: Instant = Instant.now()
     ) : PaymentIntentEvent()
 
+    /** Emitted when an attempt fails — intent reverts to REQUIRES_PAYMENT_METHOD for retry */
+    data class AttemptFailed(
+        override val paymentIntentId: String,
+        override val eventId: String = UUID.randomUUID().toString(),
+        override val occurredAt: Instant = Instant.now()
+    ) : PaymentIntentEvent()
+
     /** Canonical event type string for Kafka/outbox routing */
     val eventType: String
         get() = when (this) {
@@ -77,5 +84,6 @@ sealed class PaymentIntentEvent {
             is Captured -> "payment_intent.captured"
             is Succeeded -> "payment_intent.succeeded"
             is Canceled -> "payment_intent.canceled"
+            is AttemptFailed -> "payment_intent.attempt_failed"
         }
 }

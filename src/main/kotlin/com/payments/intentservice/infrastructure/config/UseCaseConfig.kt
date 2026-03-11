@@ -2,6 +2,7 @@ package com.payments.intentservice.infrastructure.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.payments.intentservice.application.port.outbound.OutboxRepository
+import com.payments.intentservice.application.port.outbound.PaymentAttemptRepository
 import com.payments.intentservice.application.port.outbound.PaymentIntentRepository
 import com.payments.intentservice.application.port.outbound.PaymentProcessor
 import com.payments.intentservice.application.usecase.*
@@ -27,26 +28,29 @@ class UseCaseConfig {
     @Bean
     fun confirmPaymentIntentUseCase(
         repository: PaymentIntentRepository,
+        attemptRepository: PaymentAttemptRepository,
         outboxRepository: OutboxRepository,
         processor: PaymentProcessor,
         objectMapper: ObjectMapper
-    ) = ConfirmPaymentIntentUseCaseImpl(repository, outboxRepository, processor, objectMapper)
+    ) = ConfirmPaymentIntentUseCaseImpl(repository, attemptRepository, outboxRepository, processor, objectMapper)
 
     @Bean
     fun capturePaymentIntentUseCase(
         repository: PaymentIntentRepository,
+        attemptRepository: PaymentAttemptRepository,
         outboxRepository: OutboxRepository,
         processor: PaymentProcessor,
         objectMapper: ObjectMapper
-    ) = CapturePaymentIntentUseCaseImpl(repository, outboxRepository, processor, objectMapper)
+    ) = CapturePaymentIntentUseCaseImpl(repository, attemptRepository, outboxRepository, processor, objectMapper)
 
     @Bean
     fun cancelPaymentIntentUseCase(
         repository: PaymentIntentRepository,
+        attemptRepository: PaymentAttemptRepository,
         outboxRepository: OutboxRepository,
         processor: PaymentProcessor,
         objectMapper: ObjectMapper
-    ) = CancelPaymentIntentUseCaseImpl(repository, outboxRepository, processor, objectMapper)
+    ) = CancelPaymentIntentUseCaseImpl(repository, attemptRepository, outboxRepository, processor, objectMapper)
 
     @Bean
     fun getPaymentIntentUseCase(repository: PaymentIntentRepository) =
