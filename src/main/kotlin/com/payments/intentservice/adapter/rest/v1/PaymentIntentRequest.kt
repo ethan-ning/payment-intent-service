@@ -47,8 +47,16 @@ data class ConfirmPaymentIntentRequest(
 )
 
 /**
- * Inbound payment method selection from the shopper.
- * Discriminated by "type" field.
+ * Inbound payment method selection from the shopper at confirm time.
+ * Discriminated by "type" field matching PaymentMethodType.
+ *
+ * Variants:
+ *   CardRequest          → type = CARD
+ *   DeviceWalletRequest  → type = APPLE_PAY | GOOGLE_PAY
+ *   DigitalWalletRequest → type = PAYPAL | ALIPAY | WECHAT_PAY | GRABPAY
+ *   RealTimeBankRequest  → type = PAYNOW | PROMPTPAY | FPS | UPI | SEPA_INSTANT | ...
+ *   BnplRequest          → type = KLARNA | AFTERPAY | ATOME
+ *   BankTransferRequest  → type = BANK_TRANSFER
  */
 sealed class PaymentMethodRequest {
     abstract val type: PaymentMethodType
@@ -65,42 +73,68 @@ sealed class PaymentMethodRequest {
         override val type = PaymentMethodType.CARD
     }
 
-    data class WalletRequest(
-        val walletType: WalletType,
-        val email: String? = null,
+    /** Apple Pay / Google Pay — card passthrough, no independent balance */
+    data class DeviceWalletRequest(
+        val walletType: DeviceWalletType,
         val dynamicLast4: String? = null
     ) : PaymentMethodRequest() {
-        override val type: PaymentMethodType = when (walletType) {
-            WalletType.APPLE_PAY -> PaymentMethodType.APPLE_PAY
-            WalletType.GOOGLE_PAY -> PaymentMethodType.GOOGLE_PAY
-            WalletType.PAYPAL -> PaymentMethodType.PAYPAL
+        override val type = when (walletType) {
+            DeviceWalletType.APPLE_PAY  -> PaymentMethodType.APPLE_PAY
+            DeviceWalletType.GOOGLE_PAY -> PaymentMethodType.GOOGLE_PAY
         }
     }
 
-    data class RealTimePaymentRequest(val provider: RtpProvider) : PaymentMethodRequest() {
-        override val type: PaymentMethodType = when (provider) {
-            RtpProvider.WECHAT_PAY -> PaymentMethodType.WECHAT_PAY
-            RtpProvider.ALIPAY -> PaymentMethodType.ALIPAY
-            RtpProvider.GRABPAY -> PaymentMethodType.GRABPAY
-            RtpProvider.PAYNOW -> PaymentMethodType.PAYNOW
-            RtpProvider.PROMPTPAY -> PaymentMethodType.PROMPTPAY
+    /** PayPal / Alipay / WeChat Pay / GrabPay — closed-loop e-money wallets */
+    data class DigitalWalletRequest(
+        val walletType: DigitalWalletType,
+        val email: String? = null
+    ) : PaymentMethodRequest() {
+        override val type = when (walletType) {
+            DigitalWalletType.PAYPAL     -> PaymentMethodType.PAYPAL
+            DigitalWalletType.ALIPAY     -> PaymentMethodType.ALIPAY
+            DigitalWalletType.WECHAT_PAY -> PaymentMethodType.WECHAT_PAY
+            DigitalWalletType.GRABPAY    -> PaymentMethodType.GRABPAY
         }
     }
 
-    data class BnplRequest(val provider: BnplProvider, val installments: Int? = null) : PaymentMethodRequest() {
-        override val type: PaymentMethodType = when (provider) {
-            BnplProvider.KLARNA -> PaymentMethodType.KLARNA
+    /** PayNow / PromptPay / FPS / UPI / SEPA Instant — account-to-account bank rails */
+    data class RealTimeBankRequest(val rail: RealTimeBankRail) : PaymentMethodRequest() {
+        override val type = when (rail) {
+            RealTimeBankRail.PAYNOW          -> PaymentMethodType.PAYNOW
+            RealTimeBankRail.PROMPTPAY       -> PaymentMethodType.PROMPTPAY
+            RealTimeBankRail.FPS             -> PaymentMethodType.FPS
+            RealTimeBankRail.UPI             -> PaymentMethodType.UPI
+            RealTimeBankRail.SEPA_INSTANT    -> PaymentMethodType.SEPA_INSTANT
+            RealTimeBankRail.FASTER_PAYMENTS -> PaymentMethodType.FASTER_PAYMENTS
+        }
+    }
+
+    data class BnplRequest(
+        val provider: BnplProvider,
+        val installments: Int? = null
+    ) : PaymentMethodRequest() {
+        override val type = when (provider) {
+            BnplProvider.KLARNA   -> PaymentMethodType.KLARNA
             BnplProvider.AFTERPAY -> PaymentMethodType.AFTERPAY
-            BnplProvider.ATOME -> PaymentMethodType.ATOME
+            BnplProvider.ATOME    -> PaymentMethodType.ATOME
         }
     }
 
-    /** Maps this request to the domain value object */
+    data class BankTransferRequest(
+        val scheme: BankTransferScheme,
+        val bankName: String? = null,
+        val last4: String? = null
+    ) : PaymentMethodRequest() {
+        override val type = PaymentMethodType.BANK_TRANSFER
+    }
+
     fun toDomain(): PaymentMethod = when (this) {
-        is CardRequest -> PaymentMethod.Card(scheme, last4, expiryMonth, expiryYear, funding, fingerprint, issuerCountry)
-        is WalletRequest -> PaymentMethod.Wallet(walletType, email, dynamicLast4)
-        is RealTimePaymentRequest -> PaymentMethod.RealTimePayment(provider, null)
-        is BnplRequest -> PaymentMethod.BuyNowPayLater(provider, installments)
+        is CardRequest         -> PaymentMethod.Card(scheme, last4, expiryMonth, expiryYear, funding, fingerprint, issuerCountry)
+        is DeviceWalletRequest -> PaymentMethod.DeviceWallet(walletType, dynamicLast4, underlyingCard = null)
+        is DigitalWalletRequest -> PaymentMethod.DigitalWallet(walletType, email)
+        is RealTimeBankRequest -> PaymentMethod.RealTimeBankTransfer(rail)
+        is BnplRequest         -> PaymentMethod.BuyNowPayLater(provider, installments)
+        is BankTransferRequest -> PaymentMethod.BankTransfer(scheme, bankName, last4)
     }
 }
 

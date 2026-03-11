@@ -16,6 +16,10 @@ class PaymentAttemptTest {
         funding = CardFunding.CREDIT, fingerprint = null, issuerCountry = "SG"
     )
 
+    private val wechatPay = PaymentMethod.DigitalWallet(walletType = DigitalWalletType.WECHAT_PAY)
+    private val applePay = PaymentMethod.DeviceWallet(walletType = DeviceWalletType.APPLE_PAY, dynamicLast4 = "1234", underlyingCard = visaCard)
+    private val payNow = PaymentMethod.RealTimeBankTransfer(rail = RealTimeBankRail.PAYNOW)
+
     private fun buildIntent(
         status: PaymentIntentStatus = PaymentIntentStatus.REQUIRES_CONFIRMATION,
         availableMethods: Set<PaymentMethodType> = emptySet()
@@ -106,6 +110,32 @@ class PaymentAttemptTest {
                 existingAttempts = listOf(succeededAttempt)
             )
         }
+    }
+
+    @Test
+    fun `PayPal and WeChat Pay are digital wallets — same category`() {
+        val paypal = PaymentMethod.DigitalWallet(walletType = DigitalWalletType.PAYPAL, email = "user@example.com")
+        val wechat = PaymentMethod.DigitalWallet(walletType = DigitalWalletType.WECHAT_PAY)
+        assertTrue(paypal.type.isDigitalWallet)
+        assertTrue(wechat.type.isDigitalWallet)
+        assertFalse(paypal.type.isDeviceWallet)
+        assertFalse(wechat.type.isDeviceWallet)
+    }
+
+    @Test
+    fun `Apple Pay is a device wallet (card-backed), not a digital wallet`() {
+        val applePay = PaymentMethod.DeviceWallet(DeviceWalletType.APPLE_PAY, dynamicLast4 = "1234", underlyingCard = visaCard)
+        assertTrue(applePay.type.isDeviceWallet)
+        assertTrue(applePay.type.isCardBacked)
+        assertFalse(applePay.type.isDigitalWallet)
+    }
+
+    @Test
+    fun `PayNow is a real-time bank transfer, not a digital wallet`() {
+        val payNow = PaymentMethod.RealTimeBankTransfer(rail = RealTimeBankRail.PAYNOW)
+        assertTrue(payNow.type.isRealTimeBankTransfer)
+        assertFalse(payNow.type.isDigitalWallet)
+        assertFalse(payNow.type.isCardBacked)
     }
 
     @Test

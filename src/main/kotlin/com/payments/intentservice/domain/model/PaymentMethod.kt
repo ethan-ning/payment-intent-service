@@ -1,27 +1,42 @@
 package com.payments.intentservice.domain.model
 
 /**
- * PaymentMethod — a VALUE OBJECT describing the payment scheme/type used in an attempt.
+ * PaymentMethod — VALUE OBJECT describing the payment scheme/type used in an attempt.
  *
- * This is NOT a saved payment instrument (no ID, no lifecycle).
- * It answers: "how did the shopper choose to pay?"
+ * Taxonomy (corrected):
  *
- * It is also used to describe:
- *   - Merchant capability: which methods a merchant has enabled
- *   - PSP/Acquirer capability: which methods a processor supports
+ *   CARD
+ *     Visa, Mastercard, AMEX, UnionPay, JCB...
+ *     The card scheme IS the payment method.
  *
- * Conceptually:
- *   PaymentAttempt.paymentMethod   → what was actually used in this attempt
- *   PaymentIntent.availablePaymentMethods → what's enabled for this intent (from merchant config)
+ *   DEVICE_WALLET (card passthrough — no balance of its own)
+ *     Apple Pay, Google Pay
+ *     These tokenize an underlying card. The wallet is just a UX/tokenization layer.
+ *     The actual instrument is still a card; the DeviceWallet wraps it.
+ *
+ *   DIGITAL_WALLET (closed-loop e-money account, redirect-based)
+ *     PayPal, Alipay, WeChat Pay, GrabPay
+ *     Shopper's balance lives inside the wallet provider's system.
+ *     PayPal is in the same category as Alipay — both are e-money wallets.
+ *
+ *   REAL_TIME_BANK_TRANSFER (account-to-account, bank rails)
+ *     PayNow (SG), PromptPay (TH), FPS (HK), UPI (IN), SEPA Instant
+ *     These move money directly between bank accounts via national/regional rails.
+ *     No wallet balance involved — the source is always a bank account.
+ *
+ *   BNPL (Buy Now Pay Later)
+ *     Klarna, Afterpay, Atome
+ *
+ *   BANK_TRANSFER (non-instant, batch settlement)
+ *     ACH, SEPA, FPX, BACS, Faster Payments
  */
 sealed class PaymentMethod {
 
     abstract val type: PaymentMethodType
 
     /**
-     * Card payment — covers credit, debit, prepaid.
-     * Includes sub-scheme (Visa, Mastercard, etc.) and display-safe fields only.
-     * Raw PAN/CVV never appear here — those are tokenized upstream in the vault.
+     * Traditional card payment (credit, debit, prepaid).
+     * Display-safe fields only — no raw PAN/CVV.
      */
     data class Card(
         val scheme: CardScheme,
@@ -29,14 +44,14 @@ sealed class PaymentMethod {
         val expiryMonth: Int,
         val expiryYear: Int,
         val funding: CardFunding,
-        val fingerprint: String?,       // processor-generated, used for dedup/fraud
-        val issuerCountry: String?      // ISO 3166-1 alpha-2
+        val fingerprint: String?,       // processor-generated token for dedup/fraud
+        val issuerCountry: String?
     ) : PaymentMethod() {
-        override val type: PaymentMethodType = PaymentMethodType.CARD
+        override val type = PaymentMethodType.CARD
 
         init {
             require(last4.length == 4 && last4.all { it.isDigit() }) {
-                "last4 must be exactly 4 digits"
+                "last4 must be exactly 4 digits, got: '$last4'"
             }
             require(expiryMonth in 1..12) { "expiryMonth must be 1-12" }
             require(expiryYear >= 2024) { "expiryYear must be >= 2024" }
@@ -44,150 +59,185 @@ sealed class PaymentMethod {
     }
 
     /**
-     * Wallet-based payments — Apple Pay, Google Pay, PayPal, etc.
-     * Apple Pay / Google Pay are card-backed wallets; the underlying card details
-     * may be available after tokenization.
+     * Device wallet — tokenizes an underlying card (no independent balance).
+     * Apple Pay and Google Pay present a card via device-bound token (DPAN).
+     * The real payment instrument is the [underlyingCard]; the device wallet is the delivery mechanism.
      */
-    data class Wallet(
-        val walletType: WalletType,
-        val email: String? = null,          // PayPal, Klarna
-        val dynamicLast4: String? = null,   // Apple Pay / Google Pay device PAN
-        val underlyingCard: Card? = null    // populated if wallet is card-backed
+    data class DeviceWallet(
+        val walletType: DeviceWalletType,
+        val dynamicLast4: String?,          // device PAN last 4 (differs from card last 4)
+        val underlyingCard: Card?           // resolved after tokenization
     ) : PaymentMethod() {
-        override val type: PaymentMethodType = when (walletType) {
-            WalletType.APPLE_PAY -> PaymentMethodType.APPLE_PAY
-            WalletType.GOOGLE_PAY -> PaymentMethodType.GOOGLE_PAY
-            WalletType.PAYPAL -> PaymentMethodType.PAYPAL
+        override val type = when (walletType) {
+            DeviceWalletType.APPLE_PAY  -> PaymentMethodType.APPLE_PAY
+            DeviceWalletType.GOOGLE_PAY -> PaymentMethodType.GOOGLE_PAY
         }
     }
 
     /**
-     * Real-time payment rails — WeChat Pay, Alipay, GrabPay, etc.
+     * Digital wallet — closed-loop e-money account with its own balance.
+     * PayPal, Alipay, WeChat Pay, GrabPay all fall here.
+     * Checkout is redirect-based; settlement happens wallet-to-merchant.
      */
-    data class RealTimePayment(
-        val provider: RtpProvider,
-        val transactionReference: String?   // provider-side reference
+    data class DigitalWallet(
+        val walletType: DigitalWalletType,
+        val email: String? = null,          // PayPal account email (display only)
+        val accountReference: String? = null // wallet-side account reference (masked)
     ) : PaymentMethod() {
-        override val type: PaymentMethodType = when (provider) {
-            RtpProvider.WECHAT_PAY -> PaymentMethodType.WECHAT_PAY
-            RtpProvider.ALIPAY -> PaymentMethodType.ALIPAY
-            RtpProvider.GRABPAY -> PaymentMethodType.GRABPAY
-            RtpProvider.PAYNOW -> PaymentMethodType.PAYNOW
-            RtpProvider.PROMPTPAY -> PaymentMethodType.PROMPTPAY
+        override val type = when (walletType) {
+            DigitalWalletType.PAYPAL    -> PaymentMethodType.PAYPAL
+            DigitalWalletType.ALIPAY    -> PaymentMethodType.ALIPAY
+            DigitalWalletType.WECHAT_PAY -> PaymentMethodType.WECHAT_PAY
+            DigitalWalletType.GRABPAY   -> PaymentMethodType.GRABPAY
         }
     }
 
     /**
-     * Buy Now Pay Later schemes.
+     * Real-time bank transfer — account-to-account via national/regional bank rails.
+     * Source of funds is always a bank account (not a wallet balance).
+     * Examples: PayNow (SG), PromptPay (TH), FPS (HK), UPI (IN), SEPA Instant (EU).
+     */
+    data class RealTimeBankTransfer(
+        val rail: RealTimeBankRail,
+        val bankReference: String? = null   // bank-side transaction reference
+    ) : PaymentMethod() {
+        override val type = when (rail) {
+            RealTimeBankRail.PAYNOW        -> PaymentMethodType.PAYNOW
+            RealTimeBankRail.PROMPTPAY     -> PaymentMethodType.PROMPTPAY
+            RealTimeBankRail.FPS           -> PaymentMethodType.FPS
+            RealTimeBankRail.UPI           -> PaymentMethodType.UPI
+            RealTimeBankRail.SEPA_INSTANT  -> PaymentMethodType.SEPA_INSTANT
+            RealTimeBankRail.FASTER_PAYMENTS -> PaymentMethodType.FASTER_PAYMENTS
+        }
+    }
+
+    /**
+     * Buy Now Pay Later.
      */
     data class BuyNowPayLater(
         val provider: BnplProvider,
         val installments: Int? = null
     ) : PaymentMethod() {
-        override val type: PaymentMethodType = when (provider) {
-            BnplProvider.KLARNA -> PaymentMethodType.KLARNA
+        override val type = when (provider) {
+            BnplProvider.KLARNA   -> PaymentMethodType.KLARNA
             BnplProvider.AFTERPAY -> PaymentMethodType.AFTERPAY
-            BnplProvider.ATOME -> PaymentMethodType.ATOME
+            BnplProvider.ATOME    -> PaymentMethodType.ATOME
         }
     }
 
     /**
-     * Bank-based transfers (ACH, SEPA, FPX, etc.)
+     * Non-instant batch bank transfer (ACH, SEPA credit, FPX, BACS).
      */
     data class BankTransfer(
-        val bankName: String?,
-        val last4: String?,             // last 4 of account number
-        val scheme: BankTransferScheme  // ACH | SEPA | FPX | BACS
+        val scheme: BankTransferScheme,
+        val bankName: String? = null,
+        val last4: String? = null
     ) : PaymentMethod() {
-        override val type: PaymentMethodType = PaymentMethodType.BANK_TRANSFER
+        override val type = PaymentMethodType.BANK_TRANSFER
     }
 }
 
-// ─── Supporting Enums ─────────────────────────────────────────────────────────
+// ─── PaymentMethodType ────────────────────────────────────────────────────────
 
 /**
- * Top-level payment method type — the "scheme" a shopper chose.
- * Used for merchant capability lists and PSP support lists.
+ * Top-level payment method type.
+ * Used for:
+ *   - PaymentAttempt: which type was used in this attempt
+ *   - PaymentIntent.availablePaymentMethods: what the merchant has enabled
+ *   - PSP/Acquirer config: what the processor supports
  */
 enum class PaymentMethodType {
-    // Card
+    // ── Card ──────────────────────────────────────────────────────────────────
     CARD,
 
-    // Wallets
+    // ── Device Wallets (card passthrough, no independent balance) ─────────────
     APPLE_PAY,
     GOOGLE_PAY,
-    PAYPAL,
 
-    // Real-time payments
-    WECHAT_PAY,
+    // ── Digital Wallets (closed-loop e-money, redirect-based) ─────────────────
+    PAYPAL,
     ALIPAY,
+    WECHAT_PAY,
     GRABPAY,
+
+    // ── Real-Time Bank Transfers (A2A via bank rails) ──────────────────────────
     PAYNOW,
     PROMPTPAY,
+    FPS,
+    UPI,
+    SEPA_INSTANT,
+    FASTER_PAYMENTS,
 
-    // BNPL
+    // ── BNPL ──────────────────────────────────────────────────────────────────
     KLARNA,
     AFTERPAY,
     ATOME,
 
-    // Bank
+    // ── Batch Bank Transfer ───────────────────────────────────────────────────
     BANK_TRANSFER;
 
-    /** Whether this method is a card-backed scheme (affects routing/risk) */
-    val isCardBacked: Boolean
-        get() = this in setOf(CARD, APPLE_PAY, GOOGLE_PAY)
+    val isCard: Boolean get() = this == CARD
 
-    /** Whether this method is a wallet */
-    val isWallet: Boolean
-        get() = this in setOf(APPLE_PAY, GOOGLE_PAY, PAYPAL)
+    /** Device wallets — card-backed, no independent balance */
+    val isDeviceWallet: Boolean get() = this in setOf(APPLE_PAY, GOOGLE_PAY)
 
-    /** Whether this method requires redirect (off-session flow) */
+    /** Digital wallets — own e-money balance, redirect-based */
+    val isDigitalWallet: Boolean get() = this in setOf(PAYPAL, ALIPAY, WECHAT_PAY, GRABPAY)
+
+    val isWallet: Boolean get() = isDeviceWallet || isDigitalWallet
+
+    /** Real-time bank-to-bank transfers */
+    val isRealTimeBankTransfer: Boolean
+        get() = this in setOf(PAYNOW, PROMPTPAY, FPS, UPI, SEPA_INSTANT, FASTER_PAYMENTS)
+
+    val isBnpl: Boolean get() = this in setOf(KLARNA, AFTERPAY, ATOME)
+
+    /** Methods that are card-backed (underlying instrument is always a card) */
+    val isCardBacked: Boolean get() = this in setOf(CARD, APPLE_PAY, GOOGLE_PAY)
+
+    /** Methods that require a redirect to complete (off-session browser flow) */
     val requiresRedirect: Boolean
-        get() = this in setOf(WECHAT_PAY, ALIPAY, GRABPAY, PAYNOW, PROMPTPAY, KLARNA, AFTERPAY, ATOME)
+        get() = isDigitalWallet || isRealTimeBankTransfer || isBnpl
 }
 
+// ─── Supporting Enums ─────────────────────────────────────────────────────────
+
 enum class CardScheme {
-    VISA,
-    MASTERCARD,
-    AMEX,
-    UNIONPAY,
-    DISCOVER,
-    JCB,
-    DINERS,
-    UNKNOWN
+    VISA, MASTERCARD, AMEX, UNIONPAY, DISCOVER, JCB, DINERS, UNKNOWN
 }
 
 enum class CardFunding {
-    CREDIT,
-    DEBIT,
-    PREPAID,
-    UNKNOWN
+    CREDIT, DEBIT, PREPAID, UNKNOWN
 }
 
-enum class WalletType {
-    APPLE_PAY,
-    GOOGLE_PAY,
-    PAYPAL
+/** Apple Pay and Google Pay — device-bound tokenization of an underlying card */
+enum class DeviceWalletType {
+    APPLE_PAY, GOOGLE_PAY
 }
 
-enum class RtpProvider {
-    WECHAT_PAY,
-    ALIPAY,
-    GRABPAY,
-    PAYNOW,
-    PROMPTPAY
+/** Closed-loop e-money wallets with their own balance */
+enum class DigitalWalletType {
+    PAYPAL, ALIPAY, WECHAT_PAY, GRABPAY
+}
+
+/** Real-time account-to-account bank rails */
+enum class RealTimeBankRail {
+    PAYNOW,           // Singapore
+    PROMPTPAY,        // Thailand
+    FPS,              // Hong Kong
+    UPI,              // India
+    SEPA_INSTANT,     // Europe
+    FASTER_PAYMENTS   // UK
 }
 
 enum class BnplProvider {
-    KLARNA,
-    AFTERPAY,
-    ATOME
+    KLARNA, AFTERPAY, ATOME
 }
 
 enum class BankTransferScheme {
-    ACH,
-    SEPA,
-    FPX,
-    BACS,
-    FASTER_PAYMENTS
+    ACH,              // USA
+    SEPA,             // Europe (non-instant)
+    FPX,              // Malaysia
+    BACS,             // UK (non-instant)
+    FASTER_PAYMENTS   // UK (near-instant, distinct from real-time rail above)
 }

@@ -89,54 +89,73 @@ data class PaymentAttemptResponse(
  */
 data class PaymentMethodDetailsResponse(
     val type: String,
-    // Card fields
+    // Card / Device wallet card details
     val scheme: String? = null,
     val last4: String? = null,
     val expiryMonth: Int? = null,
     val expiryYear: Int? = null,
     val funding: String? = null,
     val issuerCountry: String? = null,
-    // Wallet fields
+    // Wallet (device or digital)
     val walletType: String? = null,
     val email: String? = null,
-    // RTP fields
-    val provider: String? = null,
+    // Real-time bank transfer
+    val rail: String? = null,
     val transactionReference: String? = null,
-    // BNPL fields
+    // BNPL
+    val provider: String? = null,
     val installments: Int? = null
 ) {
     companion object {
         fun from(pm: PaymentMethod): PaymentMethodDetailsResponse = when (pm) {
-            is PaymentMethod.Card -> PaymentMethodDetailsResponse(
-                type = "card",
-                scheme = pm.scheme.name.lowercase(),
-                last4 = pm.last4,
-                expiryMonth = pm.expiryMonth,
-                expiryYear = pm.expiryYear,
-                funding = pm.funding.name.lowercase(),
-                issuerCountry = pm.issuerCountry
-            )
-            is PaymentMethod.Wallet -> PaymentMethodDetailsResponse(
-                type = pm.type.name.lowercase(),
-                walletType = pm.walletType.name.lowercase(),
-                email = pm.email,
-                last4 = pm.dynamicLast4
-            )
-            is PaymentMethod.RealTimePayment -> PaymentMethodDetailsResponse(
-                type = pm.type.name.lowercase(),
-                provider = pm.provider.name.lowercase(),
-                transactionReference = pm.transactionReference
-            )
-            is PaymentMethod.BuyNowPayLater -> PaymentMethodDetailsResponse(
-                type = pm.type.name.lowercase(),
-                provider = pm.provider.name.lowercase(),
-                installments = pm.installments
-            )
-            is PaymentMethod.BankTransfer -> PaymentMethodDetailsResponse(
-                type = "bank_transfer",
-                scheme = pm.scheme.name.lowercase(),
-                last4 = pm.last4
-            )
+            is PaymentMethod.Card ->
+                PaymentMethodDetailsResponse(
+                    type = "card",
+                    scheme = pm.scheme.name.lowercase(),
+                    last4 = pm.last4,
+                    expiryMonth = pm.expiryMonth,
+                    expiryYear = pm.expiryYear,
+                    funding = pm.funding.name.lowercase(),
+                    issuerCountry = pm.issuerCountry
+                )
+
+            is PaymentMethod.DeviceWallet ->
+                PaymentMethodDetailsResponse(
+                    type = pm.type.name.lowercase(),  // "apple_pay" | "google_pay"
+                    walletType = pm.walletType.name.lowercase(),
+                    last4 = pm.dynamicLast4,
+                    // expose underlying card details if resolved
+                    scheme = pm.underlyingCard?.scheme?.name?.lowercase(),
+                    funding = pm.underlyingCard?.funding?.name?.lowercase()
+                )
+
+            is PaymentMethod.DigitalWallet ->
+                PaymentMethodDetailsResponse(
+                    type = pm.type.name.lowercase(),  // "paypal" | "alipay" | "wechat_pay" | "grabpay"
+                    walletType = pm.walletType.name.lowercase(),
+                    email = pm.email
+                )
+
+            is PaymentMethod.RealTimeBankTransfer ->
+                PaymentMethodDetailsResponse(
+                    type = pm.type.name.lowercase(),  // "paynow" | "promptpay" | "fps" | ...
+                    rail = pm.rail.name.lowercase(),
+                    transactionReference = pm.bankReference
+                )
+
+            is PaymentMethod.BuyNowPayLater ->
+                PaymentMethodDetailsResponse(
+                    type = pm.type.name.lowercase(),  // "klarna" | "afterpay" | "atome"
+                    provider = pm.provider.name.lowercase(),
+                    installments = pm.installments
+                )
+
+            is PaymentMethod.BankTransfer ->
+                PaymentMethodDetailsResponse(
+                    type = "bank_transfer",
+                    scheme = pm.scheme.name.lowercase(),
+                    last4 = pm.last4
+                )
         }
     }
 }
