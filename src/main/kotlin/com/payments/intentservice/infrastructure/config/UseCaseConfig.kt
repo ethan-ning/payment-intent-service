@@ -1,6 +1,7 @@
 package com.payments.intentservice.infrastructure.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.payments.intentservice.application.port.outbound.InstrumentServiceClient
 import com.payments.intentservice.application.port.outbound.OutboxRepository
 import com.payments.intentservice.application.port.outbound.PaymentAttemptRepository
 import com.payments.intentservice.application.port.outbound.PaymentIntentRepository
@@ -31,8 +32,10 @@ class UseCaseConfig {
         attemptRepository: PaymentAttemptRepository,
         outboxRepository: OutboxRepository,
         processor: PaymentProcessor,
-        objectMapper: ObjectMapper
-    ) = ConfirmPaymentIntentUseCaseImpl(repository, attemptRepository, outboxRepository, processor, objectMapper)
+        objectMapper: ObjectMapper,
+        // Optional — null when instrument-service.base-url is not configured
+        instrumentServiceClient: InstrumentServiceClient? = null,
+    ) = ConfirmPaymentIntentUseCaseImpl(repository, attemptRepository, outboxRepository, processor, objectMapper, instrumentServiceClient)
 
     @Bean
     fun capturePaymentIntentUseCase(

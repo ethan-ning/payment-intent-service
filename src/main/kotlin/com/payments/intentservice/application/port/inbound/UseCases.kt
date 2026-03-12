@@ -18,18 +18,34 @@ data class CreatePaymentIntentCommand(
      * Populated from merchant configuration at order time.
      */
     val availablePaymentMethods: Set<PaymentMethodType> = emptySet(),
+    /**
+     * Whether to save the payment method used in this intent for future use.
+     * ON_SESSION: save for convenience (customer present next time).
+     * OFF_SESSION: save for recurring/MIT (customer not present next time).
+     */
+    val setupFutureUsage: SetupFutureUsage? = null,
     val idempotencyKey: String? = null,
-    val confirm: Boolean = false
+    val confirm: Boolean = false,
 )
 
 data class ConfirmPaymentIntentCommand(
     /**
-     * The payment method the shopper chose for this attempt.
-     * A VALUE OBJECT — not a reference to a saved instrument.
-     * e.g. Card(scheme=VISA, last4="4242", ...) or RealTimePayment(WECHAT_PAY)
+     * The transient payment method the shopper chose — a VALUE OBJECT, not a saved instrument.
+     * Mutually exclusive with paymentInstrumentId (use one or the other).
      */
     val paymentMethod: PaymentMethod? = null,
-    val returnUrl: String? = null
+    /**
+     * ID of a saved PaymentInstrument from payment-instrument-service (pm_xxx).
+     * When provided, the instrument's details are used for this payment attempt.
+     * The customer must own this instrument.
+     */
+    val paymentInstrumentId: String? = null,
+    /**
+     * Override setup_future_usage at confirm time (takes precedence over the value set at create).
+     * Allows the shopper to opt in/out of saving their method at the last step of checkout.
+     */
+    val setupFutureUsage: SetupFutureUsage? = null,
+    val returnUrl: String? = null,
 )
 
 data class CapturePaymentIntentCommand(

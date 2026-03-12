@@ -56,8 +56,11 @@ class PaymentIntentController(
             captureMethod = request.captureMethod,
             confirmationMethod = request.confirmationMethod,
             availablePaymentMethods = request.availablePaymentMethods,
+            setupFutureUsage = request.setupFutureUsage
+                ?.takeIf { it.isNotBlank() }
+                ?.let { com.payments.intentservice.domain.model.SetupFutureUsage.valueOf(it.uppercase()) },
             idempotencyKey = idempotencyKey,
-            confirm = request.confirm
+            confirm = request.confirm,
         )
 
         val paymentIntent = createUseCase.execute(command)
@@ -120,7 +123,11 @@ class PaymentIntentController(
     ): ResponseEntity<PaymentIntentResponse> {
         val command = ConfirmPaymentIntentCommand(
             paymentMethod = request?.paymentMethod?.toDomain(),
-            returnUrl = request?.returnUrl
+            paymentInstrumentId = request?.paymentInstrumentId,
+            setupFutureUsage = request?.setupFutureUsage
+                ?.takeIf { it.isNotBlank() }
+                ?.let { com.payments.intentservice.domain.model.SetupFutureUsage.valueOf(it.uppercase()) },
+            returnUrl = request?.returnUrl,
         )
         val paymentIntent = confirmUseCase.execute(id, command)
         val latestAttempt = attemptRepository.findLatestByPaymentIntentId(id)

@@ -83,6 +83,11 @@ management:
 outbox:
   poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}
 
+# payment-instrument-service integration
+# Set this to enable instrument creation after CIT with setup_future_usage
+instrument-service:
+  base-url: ${INSTRUMENT_SERVICE_URL:}
+
 logging:
   level:
     com.payments: ${LOG_LEVEL:INFO}

@@ -53,11 +53,13 @@ class CreatePaymentIntentUseCaseImpl(
             idempotencyKey = command.idempotencyKey,
             clientSecret = generateClientSecret(id),
             availablePaymentMethods = command.availablePaymentMethods,
+            setupFutureUsage = command.setupFutureUsage,
+            paymentInstrumentId = null,
             canceledAt = null,
             cancellationReason = null,
             latestPaymentAttemptId = null,
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
         )
 
         val saved = paymentIntentRepository.save(paymentIntent)

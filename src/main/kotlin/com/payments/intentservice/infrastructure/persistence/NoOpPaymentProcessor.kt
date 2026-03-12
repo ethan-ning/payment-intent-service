@@ -21,7 +21,10 @@ class NoOpPaymentProcessor : PaymentProcessor {
         return ProcessorResult(
             success = true,
             requiresAction = false,
-            processorReference = "proc_${paymentIntent.id}"
+            processorReference = "proc_${paymentIntent.id}",
+            // Simulate a network transaction ID returned by the acquiring network.
+            // In production, this comes from the real payment processor (Adyen, Stripe, etc.)
+            networkTransactionId = "NTX_${paymentIntent.id.takeLast(12).uppercase()}",
         )
     }
 

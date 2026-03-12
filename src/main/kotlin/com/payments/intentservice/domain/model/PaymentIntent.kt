@@ -35,6 +35,22 @@ data class PaymentIntent(
      * Empty set = all methods enabled (no restriction).
      */
     val availablePaymentMethods: Set<PaymentMethodType>,
+    /**
+     * Whether to save the payment method after a successful CIT for future reuse.
+     *
+     * ON_SESSION:  Save for convenience — customer will be present for future payments.
+     * OFF_SESSION: Save for recurring/MIT — merchant will charge without customer present.
+     *
+     * When set and the CIT succeeds, payment-intent-service calls payment-instrument-service
+     * to create a PaymentInstrument and record the network transaction ID (stored credential).
+     */
+    val setupFutureUsage: SetupFutureUsage?,
+    /**
+     * ID of the PaymentInstrument created in payment-instrument-service after a successful
+     * CIT with setup_future_usage set. Populated post-success; null until then.
+     * Format: "pm_xxxxxxxx"
+     */
+    val paymentInstrumentId: String?,
     val canceledAt: Instant?,
     val cancellationReason: CancellationReason?,
     val latestPaymentAttemptId: String?,         // denormalized for fast lookup
@@ -103,10 +119,14 @@ data class PaymentIntent(
     /**
      * Apply the result of a succeeded attempt back onto the intent.
      * Enforces: the succeeded attempt must be the latest attempt.
+     *
+     * @param paymentInstrumentId if setup_future_usage was set and an instrument was created,
+     *   pass its ID here to record it on the intent.
      */
     fun applyAttemptSucceeded(
         attempt: PaymentAttempt,
-        existingAttempts: List<PaymentAttempt>
+        existingAttempts: List<PaymentAttempt>,
+        paymentInstrumentId: String? = null,
     ): Pair<PaymentIntent, PaymentIntentEvent> {
         // Invariant: succeeded attempt must be the latest one
         val latestAttempt = existingAttempts.maxByOrNull { it.createdAt }
@@ -116,7 +136,11 @@ data class PaymentIntent(
                 "Latest is [${latestAttempt?.id}]."
             )
         }
-        val updated = copy(status = PaymentIntentStatus.SUCCEEDED, updatedAt = Instant.now())
+        val updated = copy(
+            status = PaymentIntentStatus.SUCCEEDED,
+            paymentInstrumentId = paymentInstrumentId ?: this.paymentInstrumentId,
+            updatedAt = Instant.now(),
+        )
         return updated to PaymentIntentEvent.Succeeded(id, amount.amount, amount.currency.code)
     }
 
@@ -279,4 +303,15 @@ enum class CancellationReason {
     FRAUDULENT,
     REQUESTED_BY_CUSTOMER,
     ABANDONED
+}
+
+/**
+ * Controls whether/how to save the payment method after a successful CIT.
+ * Mirrors Stripe's setup_future_usage semantics.
+ */
+enum class SetupFutureUsage {
+    /** Save for convenience — customer will be present for future payments (on-session CIT) */
+    ON_SESSION,
+    /** Save for recurring/MIT — merchant will charge without customer present */
+    OFF_SESSION,
 }

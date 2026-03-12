@@ -68,8 +68,13 @@ data class ProcessorResult(
     val requiresAction: Boolean = false,
     val actionType: String? = null,
     val processorReference: String? = null,
+    /**
+     * Network transaction ID returned by the acquiring network on a successful CIT authorization.
+     * Must be stored on the PaymentInstrument to enable future MIT charges (stored credential framework).
+     */
+    val networkTransactionId: String? = null,
     val errorCode: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
 )
 
 interface PaymentProcessor {
@@ -77,3 +82,44 @@ interface PaymentProcessor {
     fun capture(paymentIntentId: String, amount: Long): ProcessorResult
     fun cancel(paymentIntentId: String): ProcessorResult
 }
+
+// ─── Instrument Service Client Port ──────────────────────────────────────────
+
+/**
+ * Outbound port for calling payment-instrument-service.
+ * Implemented in infrastructure by an HTTP client adapter.
+ */
+interface InstrumentServiceClient {
+    /**
+     * Create (or retrieve by fingerprint) a saved PaymentInstrument from the
+     * transient PaymentMethod used in this CIT.
+     *
+     * Called after a successful payment when setup_future_usage is set.
+     * Returns the instrument ID (pm_xxx).
+     */
+    fun createInstrument(request: CreateInstrumentRequest): String
+
+    /**
+     * Record the network transaction ID on an existing instrument after a successful CIT.
+     * This establishes the stored credential and makes the instrument MIT-eligible.
+     */
+    fun recordStoredCredential(
+        instrumentId: String,
+        networkTransactionId: String,
+        paymentIntentId: String,
+    )
+}
+
+data class CreateInstrumentRequest(
+    val paymentMethod: com.payments.intentservice.domain.model.PaymentMethod,
+    val customerId: String?,
+    val setupFutureUsage: com.payments.intentservice.domain.model.SetupFutureUsage,
+    val billingDetails: BillingDetailsData? = null,
+    val metadata: Map<String, String> = emptyMap(),
+)
+
+data class BillingDetailsData(
+    val name: String? = null,
+    val email: String? = null,
+    val phone: String? = null,
+)

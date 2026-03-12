@@ -19,11 +19,22 @@ data class PaymentIntentResponse(
     val description: String?,
     val metadata: Map<String, String>,
     val availablePaymentMethods: List<String>,
+    /**
+     * Whether/how the payment method will be saved after success.
+     * "on_session" | "off_session" | null
+     */
+    val setupFutureUsage: String?,
+    /**
+     * ID of the PaymentInstrument created in payment-instrument-service after a successful CIT.
+     * Null until the payment succeeds with setup_future_usage set.
+     * Clients should save this ID for future MIT/recurring charges.
+     */
+    val paymentInstrumentId: String?,
     val latestPaymentAttempt: PaymentAttemptResponse?,
     val canceledAt: Long?,
     val cancellationReason: String?,
     val created: Long,
-    val livemode: Boolean = false
+    val livemode: Boolean = false,
 ) {
     companion object {
         fun from(pi: PaymentIntent, latestAttempt: PaymentAttempt? = null): PaymentIntentResponse =
@@ -39,10 +50,12 @@ data class PaymentIntentResponse(
                 description = pi.description,
                 metadata = pi.metadata,
                 availablePaymentMethods = pi.availablePaymentMethods.map { it.name.lowercase() },
+                setupFutureUsage = pi.setupFutureUsage?.name?.lowercase(),
+                paymentInstrumentId = pi.paymentInstrumentId,
                 latestPaymentAttempt = latestAttempt?.let { PaymentAttemptResponse.from(it) },
                 canceledAt = pi.canceledAt?.epochSecond,
                 cancellationReason = pi.cancellationReason?.name?.lowercase(),
-                created = pi.createdAt.epochSecond
+                created = pi.createdAt.epochSecond,
             )
     }
 }

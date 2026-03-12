@@ -36,6 +36,8 @@ class JpaPaymentIntentRepository(
         entity.status = paymentIntent.status
         entity.paymentMethodId = paymentIntent.paymentMethodId
         entity.metadata = objectMapper.writeValueAsString(paymentIntent.metadata)
+        entity.setupFutureUsage = paymentIntent.setupFutureUsage?.name
+        entity.paymentInstrumentId = paymentIntent.paymentInstrumentId
         entity.latestPaymentAttemptId = paymentIntent.latestPaymentAttemptId
         entity.canceledAt = paymentIntent.canceledAt
         entity.cancellationReason = paymentIntent.cancellationReason
@@ -95,6 +97,10 @@ class JpaPaymentIntentRepository(
                 .takeIf { it.isNotEmpty() }
                 ?.let { parseAvailablePaymentMethods(it) }
                 ?: emptySet(),
+            setupFutureUsage = setupFutureUsage?.let {
+                com.payments.intentservice.domain.model.SetupFutureUsage.valueOf(it)
+            },
+            paymentInstrumentId = paymentInstrumentId,
             latestPaymentAttemptId = latestPaymentAttemptId,
             canceledAt = canceledAt,
             cancellationReason = cancellationReason,
@@ -120,6 +126,8 @@ class JpaPaymentIntentRepository(
         idempotencyKey = idempotencyKey,
         clientSecret = clientSecret,
         availablePaymentMethods = availablePaymentMethods.joinToString(",") { it.name },
+        setupFutureUsage = setupFutureUsage?.name,
+        paymentInstrumentId = paymentInstrumentId,
         latestPaymentAttemptId = latestPaymentAttemptId,
         canceledAt = canceledAt,
         cancellationReason = cancellationReason,

@@ -69,6 +69,20 @@ class PaymentIntentEntity(
     @Column(name = "available_payment_methods", length = 500)
     val availablePaymentMethods: String = "",
 
+    /**
+     * setup_future_usage: ON_SESSION | OFF_SESSION — set at intent creation or confirm time.
+     * Drives instrument creation in payment-instrument-service after successful CIT.
+     */
+    @Column(name = "setup_future_usage", length = 20)
+    var setupFutureUsage: String? = null,
+
+    /**
+     * ID of the PaymentInstrument (pm_xxx) created in payment-instrument-service
+     * after a successful CIT with setup_future_usage set.
+     */
+    @Column(name = "payment_instrument_id", length = 60)
+    var paymentInstrumentId: String? = null,
+
     @Column(name = "latest_payment_attempt_id", length = 255)
     var latestPaymentAttemptId: String? = null,
 

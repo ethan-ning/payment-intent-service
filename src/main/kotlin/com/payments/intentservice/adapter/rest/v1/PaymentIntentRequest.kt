@@ -33,17 +33,34 @@ data class CreatePaymentIntentRequest(
      * Empty = all methods available.
      */
     val availablePaymentMethods: Set<PaymentMethodType> = emptySet(),
+    /**
+     * Whether to save the payment method after a successful payment for future reuse.
+     * "on_session" — save for convenience (customer present for future payments).
+     * "off_session" — save for recurring/MIT (merchant charges without customer present).
+     */
+    val setupFutureUsage: String? = null,
     val confirm: Boolean = false,
-    val returnUrl: String? = null
+    val returnUrl: String? = null,
 )
 
 data class ConfirmPaymentIntentRequest(
     /**
-     * The payment method the shopper chose for this attempt.
-     * Required fields depend on type — see PaymentMethodRequest variants.
+     * The transient payment method the shopper chose — a value object for this payment only.
+     * Mutually exclusive with paymentInstrumentId.
      */
     val paymentMethod: PaymentMethodRequest? = null,
-    val returnUrl: String? = null
+    /**
+     * ID of a saved PaymentInstrument (pm_xxx) from payment-instrument-service.
+     * Use when the customer picks a previously saved card/wallet.
+     */
+    val paymentInstrumentId: String? = null,
+    /**
+     * Override setup_future_usage at confirm time.
+     * "on_session" or "off_session" — takes precedence over the value set at create.
+     * Set to "" (empty string) to explicitly clear a previously set value.
+     */
+    val setupFutureUsage: String? = null,
+    val returnUrl: String? = null,
 )
 
 /**
